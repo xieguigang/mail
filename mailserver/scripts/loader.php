@@ -10,6 +10,10 @@
 
 $__svc = __DIR__;
 
+# 表名常量必须最先加载：各服务之间存在相互引用，
+# 集中定义可消除因加载顺序导致的未定义常量问题
+require_once $__svc . "/tables.php";
+
 require_once $__svc . "/MailAddress.php";
 require_once $__svc . "/UserService.php";
 require_once $__svc . "/TokenService.php";
