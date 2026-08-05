@@ -1,0 +1,76 @@
+# =====================================================================
+# 邮件服务器 Apache 配置
+#
+# 需要站点配置中开启 AllowOverride All，本文件方可生效。
+# RewriteEngine 必须与 .etc/config.ini.php 中的 REWRITE_ENGINE 成对开启。
+# =====================================================================
+
+RewriteEngine On
+
+# ---------------------------------------------------------------------
+# 一、拒绝直接访问敏感目录与文件
+#     附件与原始报文必须经 API 鉴权后由 PHP 流式输出，杜绝越权直取。
+# ---------------------------------------------------------------------
+RewriteRule ^(\.etc|scripts|storage|logs|daemon|docs)(/|$) - [F,L]
+
+# 拒绝访问所有点开头的文件（.htaccess 自身、.env 等）
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# 拒绝访问 SQL 与日志文件
+<FilesMatch "\.(sql|log|ini)$">
+    Require all denied
+</FilesMatch>
+
+# ---------------------------------------------------------------------
+# 二、友好 URL 重写
+#     /api/auth/xxx        -> index.php?app=xxx        （公开接口）
+#     /api/<ctl>/<action>  -> api.php?ctl=&app=        （业务接口）
+# ---------------------------------------------------------------------
+
+# 已存在的真实文件或目录不参与重写
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# 公开接口：/api/auth/login -> index.php?app=login
+RewriteRule ^api/auth/([A-Za-z_][A-Za-z0-9_]*)/?$ index.php?app=$1 [QSA,L]
+
+# 业务接口：/api/mail/send -> api.php?ctl=mail&app=send
+RewriteRule ^api/([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)/?$ api.php?ctl=$1&app=$2 [QSA,L]
+
+# ---------------------------------------------------------------------
+# 三、上传与执行限制
+#     附件分片走 api.php。此处放宽限制以适应大分片。
+#     注意：仅在 PHP 以 Apache 模块方式运行时生效；
+#     若使用 PHP-FPM，请改到 php.ini 或 pool 配置中设置。
+# ---------------------------------------------------------------------
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size       68M
+    php_value memory_limit        256M
+    php_value max_execution_time  600
+    php_value max_input_time      600
+</IfModule>
+<IfModule mod_php.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size       68M
+    php_value memory_limit        256M
+    php_value max_execution_time  600
+    php_value max_input_time      600
+</IfModule>
+
+# 请求体上限（mod_reqtimeout / core）：0 表示不限制，按需调整
+LimitRequestBody 0
+
+# ---------------------------------------------------------------------
+# 四、跨域预检请求直接放行（正式 CORS 头由控制器 @origin 标签发送）
+# ---------------------------------------------------------------------
+RewriteCond %{REQUEST_METHOD} ^OPTIONS$
+RewriteRule ^ - [R=204,L]
+
+# ---------------------------------------------------------------------
+# 五、关闭目录索引
+# ---------------------------------------------------------------------
+Options -Indexes
